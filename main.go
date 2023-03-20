@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	pluginVersion = "1.0.0"
+	pluginVersion = "1.1.0"
 )
 
 func main() {
@@ -41,6 +41,16 @@ func main() {
 			EnvVar: "PLUGIN_AWS_BUCKET",
 		},
 		cli.StringFlag{
+			Name:   "role-arn",
+			Usage:  "AWS Role Arn",
+			EnvVar: "PLUGIN_ROLE_ARN",
+		},
+		cli.StringFlag{
+			Name:   "role-session-name",
+			Usage:  "AWS Role Session Name",
+			EnvVar: "PLUGIN_ROLE_SESSION_NAME",
+		},
+		cli.StringFlag{
 			Name:   "report-source",
 			Usage:  "AWS Default Region",
 			EnvVar: "PLUGIN_REPORT_SOURCE",
@@ -68,6 +78,8 @@ func run(c *cli.Context) error {
 	awsSecretKey := c.String("aws-secret-key")
 	awsDefaultRegion := c.String("aws-default-region")
 	awsBucket := c.String("aws-bucket")
+	roleArn := c.String("role-arn")
+	roleSessionName := c.String("role-session-name")
 	reportSource := c.String("report-source")
 	reportTarget := c.String("report-target")
 
@@ -80,9 +92,21 @@ func run(c *cli.Context) error {
 
 	fmt.Printf("Uploading Jacoco reports to " + awsBucket + "/" + newFolder)
 
-	// AWS config commands to set ACCESS_KEY_ID and SECRET_ACCESS_KEY
-	exec.Command("aws", "configure", "set", "aws_access_key_id", awsAccessKey).Run()
-	exec.Command("aws", "configure", "set", "aws_secret_access_key", awsSecretKey).Run()
+	if roleArn == "" {
+		exec.Command("aws", "configure", "set", "aws_access_key_id", awsAccessKey).Run()
+		exec.Command("aws", "configure", "set", "aws_secret_access_key", awsSecretKey).Run()
+	} else {
+		if roleSessionName == "" {
+			roleSessionName = "drone"
+		}
+		cmd := exec.Command("/bin/sh", "-c",
+			`export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role-with-web-identity --role-arn `+roleArn+` --role-session-name `+roleSessionName+`--web-identity-token file://$AWS_WEB_IDENTITY_TOKEN_FILE --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))`)
+
+		if err := cmd.Run(); err != nil {
+			log.Fatal("Error:", err)
+		}
+	}
+
 	reportUploadcmd := exec.Command("aws", "s3", "cp", reportSource, "s3://"+awsBucket+"/"+newFolder, "--region", awsDefaultRegion, "--recursive")
 
 	out, err := reportUploadcmd.Output()
@@ -90,7 +114,6 @@ func run(c *cli.Context) error {
 		return err
 	}
 	fmt.Printf("Output: %s\n", out)
-	// End of S3 upload operation
 
 	urls := "http://" + awsBucket + ".s3-website." + awsDefaultRegion + ".amazonaws.com/" + newFolder + "/index.html"
 	artifactFilePath := c.String("artifact-file")

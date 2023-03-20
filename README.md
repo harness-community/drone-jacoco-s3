@@ -42,7 +42,10 @@ docker run --rm \
   harnesscommunity/drone-jacoco-s3
 ```
 
+
+
 In Harness CI,
+Using AWS Access Key ID and Secret Access Key as authentication method:
 ```yaml
               - step:
                   type: Plugin
@@ -54,6 +57,23 @@ In Harness CI,
                     settings:
                       aws_access_key_id: <+pipeline.variables.AWS_ACCESS_KEY_ID>
                       aws_secret_access_key: <+pipeline.variables.AWS_SECRET_ACCESS_KEY>
+                      aws_default_region: ap-southeast-2
+                      aws_bucket: bucket-name
+                      artifact_file: url.txt
+                      report_source: maven-code-coverage/target/site/jacoco
+```
+
+Using only ROLE ARN (supported on AWS EKS Clusters):
+```yaml
+              - step:
+                  type: Plugin
+                  name: Publish Jacoco Metadata
+                  identifier: custom_plugin
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: harnesscommunity/drone-jacoco-s3
+                    settings:
+                      role_arn: arn:aws:iam::XXXXXXXXXXXX:role/ROLE_NAME
                       aws_default_region: ap-southeast-2
                       aws_bucket: bucket-name
                       artifact_file: url.txt
